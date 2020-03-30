@@ -1,0 +1,257 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# <strong><b><font size="5">Time Series Analysis and Forecasting in Python</font></b></strong>
+
+# # Time Series
+# - A time series is a sequential set of data points, measured typically over successive times. 
+# - It is mathematically defined as a set of vectors x(t), t = 0,1,2,... where t represents the time elapsed. 
+# - The variable x(t) is treated as a random variable. 
+# - The measurements taken during an event in a time series are arranged in a proper chronological order. 
+# - A time series containing records of a single variable is termed as univariate, and more than one variable a multivariate. 
+
+# # Business use cases of time series forecasting
+# - __Sales forecast - retail products sales forecast__
+# - __Demand forecasting - used in pricing, inventory and workforce management__
+# - __Traffic forecast - transport and route optimization, road facility design__
+# - __Revenue forecast - budgeting, target setting__
+
+# # Importing Libraries for time series forecasting
+
+# In[15]:
+
+
+import warnings
+import itertools
+import numpy as np
+import matplotlib.pyplot as plt
+warnings.filterwarnings("ignore")
+plt.style.use('fivethirtyeight')
+
+import pandas as pd
+pd.set_option('display.expand_frame_repr', False)
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
+
+import statsmodels.api as sm
+from statsmodels.tsa.ar_model import AR
+from statsmodels.tsa.arima_model import ARIMA,ARMA
+from statsmodels.graphics.tsaplots import plot_pacf,plot_acf
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller
+from math import sqrt
+
+import matplotlib
+matplotlib.rcParams['axes.labelsize'] = 14
+matplotlib.rcParams['xtick.labelsize'] = 12
+matplotlib.rcParams['ytick.labelsize'] = 12
+matplotlib.rcParams['text.color'] = 'k'
+import seaborn as sns
+
+from random import random
+
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, median_absolute_error, mean_squared_log_error
+
+
+# # Importing data
+# - Dataset: International airline passengers
+# - Unit: Thousands
+
+# In[29]:
+
+
+df = pd.read_csv('international-airline-passengers.csv',header=None)
+df.columns = ['year','passengers']
+
+
+# In[8]:
+
+
+print('Time period start: {}\nTime period end: {}'.format(df.year.min(),df.year.max()))
+
+
+# In[31]:
+
+
+df.year = pd.to_datetime(df['year'],format='%Y-%m')
+df = df.set_index('year')
+
+
+# In[33]:
+
+
+df.index
+
+
+# In[24]:
+
+
+df.shape
+
+
+# In[35]:
+
+
+import seaborn as sns
+sns.kdeplot(df.passengers)
+
+
+# In[63]:
+
+
+y=df.copy()
+mean = y.rolling(window=12).mean()
+std = y.rolling(window=12).std()
+
+plt.figure(figsize=(18,9))
+orig = plt.plot(y,color='blue',label= 'orig')
+mean = plt.plot(mean,color='black',label='rolling mean')
+std = plt.plot(std,color='red',label='rolling std')
+plt.show()
+
+
+# In[67]:
+
+
+ts_log = np.log(y)
+plt.plot(ts_log)
+
+
+# In[102]:
+
+
+#Exponential Weighted MA differencing to remove trend
+plt.figure(figsize=(18,7))
+ts_log_diff = ts_log - ts_log.ewm(halflife = 12).mean()
+orig = plt.plot(ts_log_diff,color='blue',label='orig')
+mean = plt.plot(ts_log_diff.rolling(window=12).mean(),color='black',label='rolling mean')
+std = plt.plot(ts_log_diff.rolling(window=12).std(),color='red',label='rolling std')
+plt.show()
+test = adfuller(ts_log_diff.passengers.dropna(),autolag='AIC')
+test
+
+
+# In[125]:
+
+
+#First Order differencing to remove trend
+plt.figure(figsize=(18,7))
+ts_log_diff = ts_log.passengers - ts_log.passengers.shift()
+orig = plt.plot(ts_log_diff,color='blue',label='orig')
+mean = plt.plot(ts_log_diff.rolling(window=12).mean(),color='black',label='rolling mean')
+std = plt.plot(ts_log_diff.rolling(window=12).std(),color='red',label='rolling std')
+plt.plot(diff)
+
+test = adfuller(ts_log_diff.dropna(),autolag='AIC')
+test
+
+
+# In[105]:
+
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+decomp = seasonal_decompose(ts_log,model='multiplicative')
+plt.figure(figsize=(18,7))
+trend = decomp.trend
+seasonal = decomp.seasonal
+residual = decomp.resid
+plt.subplot(411)
+plt.plot(ts_log, label='Original')
+plt.legend(loc='best')
+plt.subplot(412)
+plt.plot(trend, label='Trend')
+plt.legend(loc='best')
+plt.subplot(413)
+plt.plot(seasonal,label='Seasonality')
+plt.legend(loc='best')
+plt.subplot(414)
+plt.plot(residual, label='Residuals')
+plt.legend(loc='best')
+plt.tight_layout()
+
+plt.figure(figsize=(18,7))
+orig = plt.plot(residual,color='blue',label='orig')
+mean = plt.plot(residual.rolling(window=12).mean(),color='black',label='rolling mean')
+plt.show()
+test = adfuller(residual.passengers.dropna(),autolag='AIC')
+test
+
+
+# In[129]:
+
+
+from statsmodels.tsa.ar_model import AR
+#Fitting AR Model
+ar_model = AR(ts_log_diff.dropna())
+ar_fit = ar_model.fit()
+
+
+# In[131]:
+
+
+plt.figure(figsize=(18,7))
+plt.plot(ts_log_diff)
+plt.plot(ar_fit.fittedvalues)
+plt.show()
+print("RSS: {}".format(np.nansum(ts_log_diff-ar_fit.fittedvalues)**2))
+
+
+# In[146]:
+
+
+sum_pred_values = ar_fit.fittedvalues.cumsum()
+pred_AR = pd.Series(ts_log.passengers.iloc[0],index=ts_log.index)
+pred_AR = pred_AR.add(pd.Series(sum_pred_values),fill_value=0)
+plt.figure(figsize=(18,7))
+plt.plot(ts_log)
+plt.plot(pred_AR)
+
+
+# In[204]:
+
+
+model_ARIMA = ARIMA(ts_log.dropna(),order=(2,1,2))
+model_ARIMA_fit = model_ARIMA.fit()
+sum_pred_values = model_ARIMA_fit.fittedvalues.cumsum()
+pred_AR = pd.Series(ts_log.passengers.iloc[0],index=ts_log.index)
+pred_AR = pred_AR.add(pd.Series(sum_pred_values),fill_value=0)
+# plt.plot(ts_log)
+# plt.plot(pred_AR)
+plt.figure(figsize=(18,7))
+model_ARIMA_fit.plot_predict(1,200)
+
+
+# In[191]:
+
+
+train = y.passengers[:110]
+test = y.passengers[110:]
+
+
+# In[192]:
+
+
+from pmdarima.arima import auto_arima
+model = auto_arima(train)
+model.fit(train)
+
+
+# In[208]:
+
+
+train
+
+
+# In[217]:
+
+
+pred_val = model.predict(len(test))
+
+
+# In[222]:
+
+
+plt.plot(y)
+pred_df = pd.DataFrame(index=test.index,columns=['passengers'],data=pred_val)
+plt.plot(pred_df)
+

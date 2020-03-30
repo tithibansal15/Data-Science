@@ -1,0 +1,176 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Dec 11 17:07:11 2018
+
+@author: Tithi Bansal
+"""
+
+# Plot ad hoc mnist instances
+from keras.datasets import mnist
+from keras.models import load_model
+import numpy
+from keras.datasets import mnist
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import Dropout
+from keras.utils import np_utils
+import matplotlib.pyplot as plt
+from PIL import ImageTk
+from itertools import count, cycle
+
+from PIL import Image
+import tkinter as tk
+import numpy as np
+import time
+
+
+
+
+# load (downloaded if needed) the MNIST dataset
+(X_train1, y_train1), (X_test1, y_test1) = mnist.load_data()
+# plot 4 images as gray scale
+
+randnums= np.random.randint(1,10000,500)
+
+seed = 7
+numpy.random.seed(seed)
+# load data
+# flatten 28*28 images to a 784 vector for each image
+num_pixels = X_train1.shape[1] * X_train1.shape[2]
+X_train = X_train1.reshape(X_train1.shape[0], num_pixels).astype('float32')
+X_test = X_test1.reshape(X_test1.shape[0], num_pixels).astype('float32')
+
+
+# normalize inputs from 0-255 to 0-1
+X_train = X_train / 255
+X_test = X_test / 255
+
+# one hot encode outputs
+y_train = np_utils.to_categorical(y_train1)
+y_test = np_utils.to_categorical(y_test1)
+num_classes = y_test.shape[1]
+
+# define baseline model
+
+
+
+def baseline_model():
+	# create model
+	model = Sequential()
+	model.add(Dense(num_pixels, input_dim=num_pixels, kernel_initializer='normal', activation='relu'))
+	model.add(Dense(num_classes, kernel_initializer='normal', activation='softmax'))
+	# Compile model
+	model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+	return model
+
+# build the model
+#model = baseline_model()
+# Fit the model
+#model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=10, batch_size=200, verbose=2)
+# Final evaluation of the model
+#scores = model.evaluate(X_test, y_test, verbose=0)
+#print("CNN Error: %.2f%%" % (100-scores[1]*100))
+
+# saving the model
+#model.save("kerasmnist.h5")
+
+def win2(image):
+    print(str(image))
+    img = Image.fromarray(X_test1[image])
+    board = tk.Toplevel()
+    ws = board.winfo_screenwidth() # width of the screen
+    hs = board.winfo_screenheight() # height of the screen
+    board.geometry('%dx%d+%d+%d' % (ws, hs/2, 0,int(0.4*hs)))
+#    board.geometry('1000x700')
+    board.title("CNN Model")
+    board.configure(background ='black')
+    img = img.resize((150, 150))
+    photo=ImageTk.PhotoImage(img)
+    tk.Label(board,image=photo).place(relx=0.1,rely=0.2)
+    
+    lbl = ImageLabel(board)
+    lbl.place(relx=0.30,rely=0.1)    
+    lbl.load('Neuraldigit4.gif')
+
+    tk.Label(board, text = predicted_classes[image], font = ("Helvetica 18 bold",120),
+                    fg='white',bg='black'    ).place(relx=0.8,rely=0.1)
+
+    board.mainloop()
+
+class ImageLabel(tk.Label):
+    """
+    A Label that displays images, and plays them if they are gifs
+
+    :im: A PIL Image instance or a string filename
+    """
+    def load(self, im):
+        if isinstance(im, str):
+            im = Image.open(im)
+        frames = []
+
+        try:
+            for i in count(1):
+                frames.append(ImageTk.PhotoImage(im.copy()))
+                im.seek(i)
+        except EOFError:
+            pass
+        self.frames = cycle(frames)
+
+        try:
+            self.delay = im.info['duration']
+        except:
+            self.delay = 100
+
+        if len(frames) == 1:
+            self.config(image=next(self.frames))
+        else:
+            self.next_frame()
+
+    def unload(self):
+        self.config(image=None)
+        self.frames = None
+
+    def next_frame(self):
+        if self.frames:
+            self.config(image=next(self.frames))
+            self.after(self.delay, self.next_frame)
+
+def showImages(root):   
+    i=0
+    j=0
+    for x in randnums:
+        im = Image.fromarray(X_test1[x])
+        im = im.resize((50, 50))
+   
+        tkimage = ImageTk.PhotoImage(im)
+        handler = lambda img = x: win2(img)  #here modify
+        imageButton = tk.Button(root, image=tkimage, height=50, width=50,command=handler)#here
+        imageButton.image=tkimage
+        imageButton.grid(row=i,column=j)
+        i=i+1
+        if i>10:
+            j=j+1
+            i=0
+
+
+
+def win1():
+    # this is the main/root window
+    root = tk.Tk()
+    root.title("Image Data SEt")
+    root.configure(background ='grey')
+    # get screen width and height
+    ws = root.winfo_screenwidth() # width of the screen
+    hs = root.winfo_screenheight() # height of the screen
+#    root.geometry('700x700')
+    root.geometry('%dx%d+%d+%d' % (ws, int(0.4*hs), 0, 0))
+#    startButton = tk.Button(root, text="Start", command=win2)
+    showImages(root)
+    root.mainloop()
+
+
+imagemodel = load_model("kerasmnist.h5")
+predicted_classes = imagemodel.predict_classes(X_test)
+    
+win1()    
+

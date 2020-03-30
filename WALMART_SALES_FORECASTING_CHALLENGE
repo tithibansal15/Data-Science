@@ -1,0 +1,234 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+from sklearn.model_selection import train_test_split
+import numpy as np # linear algebra
+import os
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import seaborn as sns; sns.set(style="ticks", color_codes=True)
+from sklearn.model_selection import train_test_split
+
+
+# In[2]:
+
+
+print(os.listdir('data'))
+
+
+# In[3]:
+
+
+train= pd.read_csv('data/train.csv')
+test = pd.read_csv('data/test.csv')
+features=pd.read_csv('data/features.csv')
+stores = pd.read_csv('data/stores.csv')
+
+print('Stores shape:{}'.format(stores.shape))
+print('Train shape:{}'.format(train.shape))
+print('Test shape:{}'.format(test.shape))
+print('Features shape:{}'.format(features.shape))
+
+
+# In[4]:
+
+
+train['Date'] = pd.to_datetime(train['Date'],format='%Y-%m-%d')
+test['Date'] = pd.to_datetime(test['Date'],format='%Y-%m-%d')
+features['Date'] = pd.to_datetime(features['Date'],format='%Y-%m-%d')
+train.info()
+
+
+# In[5]:
+
+
+#Data Pre-processing on features
+features = pd.merge(features,stores,on='Store',how='left')
+for col in ['MarkDown1','MarkDown2','MarkDown3','MarkDown4','MarkDown5']:
+    features[col] = features[col].fillna(0)
+for col in ['CPI','Unemployment']:
+    features[col].fillna(features.groupby('Type').transform('mean')[col],inplace=True)
+
+
+# In[6]:
+
+
+#merging stores, features with train and test
+train = pd.merge(train,stores,on='Store',how='left')
+test = pd.merge(test,stores,on='Store',how='left')
+
+train = pd.merge(train,features,on=['Store','Type','Size','Date','IsHoliday'],how='left')
+test = pd.merge(test,features,on=['Store','Type','Size','Date','IsHoliday'],how='left')
+
+
+# In[7]:
+
+
+stores.groupby('Type').agg({'Size':'mean'})
+
+
+# In[8]:
+
+
+import matplotlib.pyplot as plt
+sns.boxplot(x='Type',y='Weekly_Sales',data=train)
+plt.ylim(-100,100000)
+
+
+# In[9]:
+
+
+sns.barplot(x='Type',y='Weekly_Sales',data=train)
+plt.figure()
+sns.boxplot(x='Type',y='Size',data=train)
+
+
+# In[10]:
+
+
+plt.figure(figsize=(18,7))
+sns.barplot(x='Dept',y='Weekly_Sales',data=train,hue='Type')
+
+
+# In[11]:
+
+
+import matplotlib.pyplot as plt
+train = train.sort_values(by='Date')
+plt.figure(figsize=(18,5))
+train['month'] = train['Date'].dt.month
+train['year'] = train['Date'].dt.year
+sns.lineplot(x='month',y='Weekly_Sales',data=train,hue='Type')
+
+
+# In[12]:
+
+
+train['IsHoliday'] = np.where(train['IsHoliday']==True,1,0)
+test['IsHoliday'] = np.where(test['IsHoliday']==True,1,0)
+sns.barplot(x='IsHoliday',y='Weekly_Sales',data=train)
+
+
+# In[13]:
+
+
+train['Sales_bin']=pd.cut(train['Weekly_Sales'],[0,100000,300000,700000])
+train['Sales_bin']=np.where(train['Sales_bin']=='(0, 100000]','Low',train['Sales_bin'])
+train['Sales_bin']=np.where(train['Sales_bin']=='(100000,3000000]','Medium',train['Sales_bin'])
+train['Sales_bin']=np.where(train['Sales_bin']=='(300000,7000000]','High',train['Sales_bin'])
+
+
+# In[14]:
+
+
+train['Sales_bin'].value_counts()
+
+
+# In[15]:
+
+
+sns.boxplot(x='Sales_bin',y='CPI',data=train)
+
+
+# In[16]:
+
+
+sns.boxplot(x='Sales_bin',y='Fuel_Price',data=train)
+
+
+# In[17]:
+
+
+sns.boxplot(x='Sales_bin',y='Unemployment',data=train)
+
+
+# In[18]:
+
+
+plt.figure(figsize=(10,8))
+sns.heatmap(train.corr())
+
+
+# In[19]:
+
+
+col_list = ['Store', 'Date', 'IsHoliday', 'Type', 'Size',
+       'Temperature', 'Fuel_Price', # 'MarkDown4', 'MarkDown5', 'MarkDown1', 'MarkDown2', 'MarkDown3',
+      'CPI', 'Unemployment']
+
+
+# In[20]:
+
+
+agg_sales_store_df = train.groupby(['Store','Date']).agg({'Weekly_Sales':'sum'}).reset_index()
+train = pd.merge(agg_sales_store_df,train[col_list],on=['Store','Date'],how='inner').drop_duplicates().reset_index(drop=True)
+
+
+# In[21]:
+
+
+#One hot encoding Type column in train & Test data
+from sklearn.preprocessing import LabelBinarizer,OneHotEncoder
+encoder = LabelBinarizer()
+type_df= pd.DataFrame(encoder.fit_transform(train['Type']),columns=['A','B','C'])
+train = pd.concat([train,type_df],axis=1)
+encoder = LabelBinarizer()
+store_df= pd.DataFrame(encoder.fit_transform(train['Store']),columns=['Store_'+str(x) for x in range(1,46)])
+train = pd.concat([train,store_df],axis=1)
+
+encoder = LabelBinarizer()
+type_df= pd.DataFrame(encoder.fit_transform(test['Type']),columns=['A','B','C'])
+test = pd.concat([test,type_df],axis=1)
+# In[28]:
+
+
+from sklearn.model_selection import train_test_split
+
+X = train[['IsHoliday','Size','Temperature', 'Fuel_Price', #'MarkDown1', 'MarkDown2', 'MarkDown3','MarkDown4', 'MarkDown5', 
+       'CPI', 'Unemployment','A', 'B','C']+['Store_'+str(x) for x in range(1,46)]].values
+Y = train['Weekly_Sales'].values
+xtrain,xtest,ytrain,ytest = train_test_split(X,Y,random_state = 0,test_size=0.2)
+
+
+# In[29]:
+
+
+from sklearn.ensemble import GradientBoostingRegressor
+
+model = GradientBoostingRegressor(n_estimators=50, random_state=0)
+model.fit(xtrain,ytrain)
+
+
+# In[32]:
+
+
+feature_imp = list(zip(list(model.feature_importances_),['IsHoliday','Size','Temperature', 'Fuel_Price', 
+       'CPI', 'Unemployment','A', 'B','C']+['Store_'+str(x) for x in range(1,46)]))
+feature_imp.sort(reverse=True)
+
+
+# In[33]:
+
+
+feature_imp
+
+
+# In[34]:
+
+
+forcast = model.predict(xtest)
+
+
+# In[36]:
+
+
+plt.scatter(x=ytest,y=forcast)
+
+
+# In[ ]:
+
+
+
+

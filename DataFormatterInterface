@@ -1,0 +1,338 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Apr 22 22:05:09 2020
+
+@author: tithi.bansal
+"""
+from tkinter import filedialog
+from tkinter import ttk
+from tkinter.ttk import * 
+from tkinter import *
+import os
+import pandas as pd
+import numpy as np
+from difflib import get_close_matches
+from datetime import datetime
+
+window = Tk()
+window.title()
+window.geometry('505x326+200+200')
+window.iconbitmap("icon_3xe_icon.ico")
+window.title("Data Doctor v1.0")
+
+output_path = "../output/"
+example_separator = " :: "
+
+in_path=StringVar()
+ref_path=StringVar()
+lbl_info_text_var = StringVar()
+
+in_fileList = []
+in_colList_bu = []
+in_colList = []
+in_dataList = []
+in_df = pd.DataFrame()
+ref_fileList = []
+ref_colList_bu = []
+ref_colList = []
+ref_dataList = []
+out_colMap ={}
+
+def on_reset():
+    """ Resets the input to reference column mapping"""
+    global out_colMap
+    out_colMap ={}
+    update_reference_columns(cb_list_ref.get())
+    update_input_columns(cb_list_file.get())
+
+def on_apply():
+    """
+    Creates the Output Folder in the same folder structure as reference
+    and maps the input file columns to refernce file columns.
+    """
+    global in_colList_bu,in_df,ref_colList,output_path,out_colMap
+    btn_next.config(state ="normal")
+    # list of final cols for output including cols in input not used for mapping
+    final_cols = [out_colMap[x] if x in out_colMap.keys() else x+"_not_used" for x in in_colList_bu]
+    # Renaming the input column names
+    in_df.columns = final_cols
+    # Reference file columns which are missing in input file
+    missed_cols=[v for v in ref_colList if not v in final_cols]
+    mssng_list = [x for x in ref_colList_bu if not x in final_cols]
+    final_mssng_col_list = list(set(missed_cols)|set(mssng_list))
+    for d in final_mssng_col_list:
+        # Adding missing reference columns to output data file
+        in_df.loc[:,d]=np.nan
+        
+    # creating output folder structure same as reference and saving the output File
+    output_file = os.path.join(output_path,cb_list_ref.get())
+    output_file = output_file.replace("\\","/") #Reference Filename with path
+    file_dirs = output_file.split("/")
+    created_file = ""+cb_list_file.get()
+    created_file = created_file.replace("\\","/")
+
+    created_file = created_file.split("/")[-1] #output FIleName
+    # Creating output folder structure
+    if(len(file_dirs)>0):
+        del file_dirs[-1]
+        file_dirs = "/".join(file_dirs)
+        info("Creating Directory : "+file_dirs+" ...")
+        os.makedirs(os.path.join(output_path,file_dirs),exist_ok=True)
+    # Saving output mapped file to created folder structure
+    info("Saving : " +file_dirs+"/" +created_file +" ...")
+    in_df.to_excel(os.path.join(output_path, file_dirs+"/" +created_file),index=False)
+    info("File Created!!")
+    
+    # updates the app,removes the processed files & initialize global variables
+    out_colMap = {}
+    global in_fileList,ref_fileList
+    # Remove Input file from the list of Combobox
+    in_fileList.remove(cb_list_file.get())
+    cb_list_file.config(values=in_fileList)
+    # Set the previous entry of Combobox to empty 
+    cb_list_file.set("")
+    cb_list_ref.set("")
+
+def on_next():
+    """ Maps the input selecetd column with reference column on click of next btn"""
+    global ref_colList,in_colList,example_separator,in_dataList,in_colList_bu
+    ref_col = cb_ref_col.get()
+    inp_col = listbox_input_column_list.get(ACTIVE).split(example_separator)[0]
+    if len(ref_colList)==1:
+        # If only last ref column is left to be mapped
+        cb_ref_col.config(values = [' '])
+        cb_ref_col.current(0)
+        warning("All Columns are Mapped")
+        btn_next.config(state ="disabled")
+        if inp_col in in_colList:
+            in_colList.remove(inp_col)
+        listbox_input_column_list.delete(0,listbox_input_column_list.size())
+        listbox_input_column_list.see(0)
+        for i in in_colList:
+            elmnt = ""+str(i)+str(example_separator)+str(in_dataList[in_colList_bu.index(i)])
+            listbox_input_column_list.insert(END,elmnt)
+        list_match_highlight()
+        out_colMap[inp_col] = ref_col
+        return
+    else:
+        ref_colList.remove(ref_col)
+        cb_ref_col.config(values = ref_colList)
+        if len(in_colList)>0:
+            out_colMap[inp_col] = ref_col
+        else:
+            # If input file doesnt have all required reference file columns
+            warning('Adding Ref column to Input data')
+    cb_ref_col.current(0)
+    if inp_col in in_colList:
+        in_colList.remove(inp_col)
+    listbox_input_column_list.delete(0,listbox_input_column_list.size())
+    listbox_input_column_list.see(0)
+    for i in in_colList:
+        elmnt = ""+str(i)+str(example_separator)+str(in_dataList[in_colList_bu.index(i)])
+        listbox_input_column_list.insert(END,elmnt)
+    list_match_highlight()
+
+
+def list_match_highlight():
+    global in_colList,ref_dataList,ref_colList_bu
+    match_val = cb_ref_col.get()
+    default_selection = get_close_matches(match_val,in_colList,1,0.2)
+    if match_val in ref_colList_bu:
+        txt_ref_data.delete("1.0",END)
+        txt_ref_data.insert(END,'Examples : \n')
+        txt_ref_data.insert(END,ref_dataList[ref_colList_bu.index(match_val)])
+    else:
+        return
+    if len(default_selection) > 0:
+        default_selection = default_selection[0]
+        listbox_input_column_list.activate(in_colList.index(default_selection))
+        listbox_input_column_list.selection_set(in_colList.index(default_selection))
+        listbox_input_column_list.see(in_colList.index(default_selection))
+
+def update_input_columns(input_file):
+    btn_next.config(state="normal")
+    
+    info("Reading : "+input_file )
+    input_file = os.path.join(in_path.get(),input_file)
+    input_file = input_file.replace("\\","/")
+    global in_colList,in_dataList,example_separator,in_colList_bu,in_df,ref_colList_bu,out_colMap
+    out_colMap = {}
+    try:
+        if "csv" in input_file.lower():
+            read_file =pd.read_csv(input_file)
+        elif "xlsx" in input_file.lower():
+            read_file =pd.read_excel(input_file)
+            #get the columns of the dataframe
+        in_df = read_file
+        in_colList_bu = read_file.columns.tolist()
+        in_colList = sorted(in_colList_bu)
+        in_dataList = read_file.to_numpy().tolist()[0]
+        in_dataList = ["nan" if x != x else x for x in in_dataList]
+        listbox_input_column_list.delete(0,listbox_input_column_list.size())
+        listbox_input_column_list.see(0)
+        list_match_highlight()
+        for i in in_colList:
+            elmnt = ""+str(i)+str(example_separator)+str(in_dataList[in_colList_bu.index(i)])
+            listbox_input_column_list.insert(END,elmnt)
+        
+        list_match_highlight()
+        info("Done!!")
+    except:
+        warning("Error Reading the file")
+    if len(in_colList_bu) < len(ref_colList_bu):
+        warning("Very few columns in Input File")
+ 
+def update_reference_columns(ref_file):
+    btn_next.config(state="normal")
+    info("Reading : "+ref_file )
+    ref_file = os.path.join(ref_path.get(),ref_file)
+    ref_file = ref_file.replace("\\","/")
+    global ref_colList,ref_dataList,ref_colList_bu,in_colList_bu,out_colMap
+    out_colMap = {}
+    try:
+        if "csv" in ref_file.lower():
+            read_file =pd.read_csv(ref_file)
+        elif "xlsx" in ref_file.lower():
+            read_file =pd.read_excel(ref_file)
+            #get the columns of the dataframe
+        ref_colList_bu = read_file.columns.tolist()
+        ref_colList = sorted(ref_colList_bu)
+        ref_dataList =read_file.to_numpy().tolist()[0]
+        ref_dataList = ["nan" if x != x else x for x in ref_dataList]
+        cb_ref_col.config(values = ref_colList)
+        cb_ref_col.current(0)
+        # list_match_highlight()
+        info("Done!!")
+    except:
+        warning("Error Reading the File")
+    if len(in_colList_bu) < len(ref_colList_bu):
+        warning("Very few columns in Input File")
+
+def update_input_path():
+    """ Navigates the user to Input directory and displays 
+    the list of files within in combobox"""
+    global in_fileList,ref_fileList
+    btn_next.config(state="normal")
+    
+    path = filedialog.askdirectory()
+    txt_input.insert(0, path)
+    in_path.set(path)
+    if path:
+        txt_input.config(state='disabled')
+    in_fileList =getListOfFiles(in_path.get())
+    cb_list_file.config(values=in_fileList)
+ 
+def update_ref_path():
+    """ Navigates the user to Refrence directory and displays 
+    the list of files within in combobox"""
+    global in_fileList,ref_fileList
+    btn_next.config(state="normal")
+    path = filedialog.askdirectory()
+    txt_ref.insert(0, path)
+    ref_path.set(path)
+    if path:
+        txt_ref.config(state='disabled')
+    ref_fileList =getListOfFiles(ref_path.get())
+    cb_list_ref.config(values=ref_fileList)
+
+def getListOfFiles(dirName):
+    """ Lists all the files within selected directory"""
+    # create a list of file and sub directories 
+    listOfFile = os.listdir(dirName)
+    allFiles = list()
+    for entry in listOfFile:
+        # Create full path
+        fullPath = os.path.join(dirName, entry)
+        if os.path.isdir(fullPath):
+            allFiles = allFiles + [entry+"/"+ x for x in getListOfFiles(fullPath)]
+        else:
+            allFiles.append(entry)
+    return allFiles
+
+def info(text,color="black"):
+    """ Label info displays the text in black in case of normal msg"""
+    lbl_info_text_var.set(text)
+    lbl_info.config(fg=color)
+    print("" + str(datetime.now()) + " * " + text)
+    window.update()
+
+def warning(text):
+    """ Info Label displays the text in red in case of warning msg"""
+    info(text,"red")
+    
+def on_exit():
+    """ Self Closes the GUI """
+    window.destroy()
+
+# Label & Button for Input Folder
+lbl_input = Label(window, text="Input Folder Path",font='Helvetica 8 bold')
+lbl_input.grid(column=0, row=0,sticky=E)
+txt_input = Entry(window,width=48,bd=5)
+txt_input.grid(column=1, row=0)
+btn_input_browse = Button(window, text="Browse",bg="light grey",fg="black",command=update_input_path)
+btn_input_browse.grid(column=2, row=0,padx=2,sticky=W)
+
+#  Label & Button for Reference Folder path
+lbl_ref = Label(window, text="Reference Folder Path",font='Helvetica 8 bold')
+lbl_ref.grid(column=0, row=1,sticky=E) 
+txt_ref = Entry(window,width=48,bd=5)
+txt_ref.grid(column=1, row=1)
+btn_ref_browse = Button(window, text="Browse",bg="light grey",fg="black",command=update_ref_path)
+btn_ref_browse.grid(column=2, row=1,padx=2)
+
+# Combobox to display list of files from selected input file directory
+lbl_list_file = Label(window, text="Select Input File",font='Helvetica 8 bold')
+lbl_list_file.grid(column=0, row=2,sticky=E)
+cb_list_file = ttk.Combobox(window,width=45)
+cb_list_file.bind("<<ComboboxSelected>>",lambda _ : update_input_columns(cb_list_file.get()))
+cb_list_file.grid(column=1, row=2,pady=2)#1,3,4
+
+# Combobox to display list of available files in  selected reference directory
+lbl_list_ref = Label(window, text="Select Reference File",font='Helvetica 8 bold')
+lbl_list_ref.grid(column=0, row=3,sticky=E)
+cb_list_ref = ttk.Combobox(window,width=45)
+cb_list_ref.bind("<<ComboboxSelected>>",lambda _ : update_reference_columns(cb_list_ref.get()))
+cb_list_ref.grid(column=1, row=3,pady=4)#1,2,2
+
+# Violet labels for listbox and combobox for Reference column names
+lbl_violet_1 = Label(window, text="      Refernce Column Names      ",relief=RAISED,font='Helvetica 8 bold',bg='DarkOrchid3',fg='white')
+lbl_violet_1.place(relx=0.2, rely=0.38, anchor=CENTER)
+lbl_violet_2 = Label(window, text="              Columns to be Mapped              ",relief=RAISED,font='Helvetica 8 bold',fg='white',bg='DarkOrchid3')
+lbl_violet_2.place(relx=0.6, rely=0.38, anchor=CENTER)
+
+# Combobox for display of list of reference column names
+ref_colList.append("Select Ref Col")
+cb_ref_col = ttk.Combobox(window,values=ref_colList,width=26)
+cb_ref_col.place(relx=0.2, rely=0.445, anchor=CENTER)
+cb_ref_col.bind("<<ComboboxSelected>>",lambda _ : list_match_highlight())
+cb_ref_col.current(0)
+
+# Text box to display example column values
+txt_ref_data = Text(window, height=7.5, width=21,bg='snow',bd=4)
+txt_ref_data.place(relx=0.2, rely=0.685, anchor=CENTER)
+txt_ref_data.insert(END,'Example : \n')
+
+# Creating a listbox to display all input file column names with scrollbar functionality
+listbox_input_column_list = Listbox(window,height=10, width=35,font=("Helvetica", 8),selectmode=SINGLE,bd=4,bg='snow')
+listbox_input_column_list.place(relx=0.6, rely=0.645, anchor=CENTER)
+listbox_input_column_list.insert(END, "Column List if Raw File")
+for item in in_colList:
+    listbox_input_column_list.insert(END, item)
+scrollbar = Scrollbar(window) 
+listbox_input_column_list.config(yscrollcommand = scrollbar.set)
+scrollbar.grid(column=1, sticky=N+S+E,ipady=50,pady=30,padx=20)
+scrollbar.config(command = listbox_input_column_list.yview) 
+
+# Creating buttons like Next, Apply, Reset and Exit with Info label and linking them to functionalities
+btn_next = Button(window, text="Next",bg="brown",fg="white",height = 1, width = 7,command = on_next)
+btn_next.place(relx=0.92,rely=0.6,anchor=CENTER)
+btn_apply = Button(window, text="APPLY",bg="sea green",fg="white",width=7,height=1,command = on_apply)
+btn_apply.place(relx=0.92,rely=0.7,anchor=CENTER)
+btn_reset = Button(window, text="RESET",bg="firebrick1",fg="white",width=12,command = on_reset)
+btn_reset.place(relx=0.70,rely=0.95,anchor=CENTER)
+btn_exit = Button(window, text="EXIT",bg="grey10",fg="white",width=12,command = on_exit)
+btn_exit.place(relx=0.90,rely=0.95,anchor=CENTER)
+lbl_info = Label(window, textvariable=lbl_info_text_var,font='Helvetica 8 bold',width=40,relief='sunken',anchor='w')
+lbl_info.place(relx=0.03, rely=0.98, anchor=SW)
+
+window.mainloop()
